@@ -18,7 +18,7 @@ export class AreaMapComponent implements AfterViewInit{
   protected _width: number;
   protected _height: number;
 
-  private _activeArea!: d3.Selection<any, any, any, any>;
+  private _activeArea: d3.Selection<any, any, any, any>;
   private _isMobileDevice!: boolean;
 
   constructor(){
@@ -68,16 +68,17 @@ export class AreaMapComponent implements AfterViewInit{
   }
 
   private drawControllableArea(polygonData: any[]){
-    this._g.selectAll('path').data(polygonData).enter().append('path')
+
+    this._g.selectAll('path').data(polygonData).join('path')
     .attr('d',this._path)
     .attr('class','block blockHover')
     .attr('id',(d)=>`geo${d.properties.cartodb_id}`)
     .each((data:any)=>{
       const [x,y] = this._path.centroid(data);
-      const xTranslate = x + parseInt(data.properties.textXtranslate??0) /2;//TODO
-      const yTranslate = y + parseInt(data.properties.textYtranslate??0) +5/2;//TODO
+      const xTranslate = x + parseInt(data.properties.textXtranslate??0) /2;
+      const yTranslate = y + parseInt(data.properties.textYtranslate??0) +5/2;
       const nameBlock = this._svg.select('g').append('text').attr('pointer-events','none');
-      const scale = data.properties.textScale??3;//TODO
+      const scale = data.properties.textScale??3;
 
       nameBlock.append('tspan')
       .attr('x',xTranslate)
@@ -91,18 +92,23 @@ export class AreaMapComponent implements AfterViewInit{
 
   private drawUncontrollableArea(polygonData: any[]){
     const polygonGroup = this._svg.append('g');
-    let polygonCombination = '';
-    polygonGroup.selectAll('path')
+
+    const paths = polygonGroup.selectAll('path')
     .data(polygonData)
-    .enter()
-    .append('path')
-    .attr('d',this._path)
-    .each((_:any,index:number,element:any[])=>{
-      polygonCombination += d3.select(element[index]).attr('d');
-    })
+    .join('path')
+    .attr('d', this._path);
+
+    //combine all path string into one
+    const polygonCombination = paths.nodes()
+    .map(path => d3.select(path).attr('d'))
+    .join(' ');
+
     polygonGroup.remove();
 
-    this._g.append('path').attr('d',polygonCombination).attr('class','no-pointer-events uncontrollable');
+    this._g.append('path')
+    .attr('d', polygonCombination)
+    .attr('class', 'no-pointer-events uncontrollable');
+
   }
 
   // private drawLine(lineData: any[]){
@@ -120,8 +126,8 @@ export class AreaMapComponent implements AfterViewInit{
     this._svg.transition().duration(1000).call(this._zoom.transform,d3.zoomIdentity.translate(0,0).scale(1));
     this._svg.classed('active',false);
     this._activeArea.classed('active',false);
-    // this._activeArea = d3.select(null);//TODO check
-    this._activeArea = null;
+    this._activeArea = d3.select(null);//TODO check
+    // this._activeArea = null;
   }
 
   private handleZoomEvent(event: any):void{
@@ -129,7 +135,32 @@ export class AreaMapComponent implements AfterViewInit{
   }
 
   private clickArea(area:any,data:any){
-  //TODO
+    area.preventDefault();
+    if (this._activeArea?.node() === area.target) {
+      this.resetMapView();
+      return;
+    }
+
+    this._activeArea?.classed('active',false);
+    this._activeArea = d3.select(area.target).classed('active',true);
+
+    this._svg.classed('active',true);
+
+    //TODO send click area event
+
+    const bounds = this._path.bounds(data);
+    console.log(bounds);
+    const dx = bounds[1][0] - bounds[0][0];
+    const dy = bounds[1][1] - bounds[0][1]+5;
+    // const x = (bounds[0][0] + bounds[1][0]-20)/2-25;
+    // const y = (bounds[0][1] + bounds[1][1])/2 -20;
+    const [x,y] = this._path.centroid(data);
+    const scale = Math.max(1,Math.min(6,0.9/Math.max(dx/this._width,dy/this._height)));
+    const translate = [this._width /2 -scale*x, this._height/2-scale*y];//from view center to area center
+
+    area.stopPropagation();
+
+    this._svg.transition().duration(750).call(this._zoom.transform,d3.zoomIdentity.translate(translate[0],translate[1]).scale(scale));
   }
 
 }
